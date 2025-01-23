@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -28,6 +29,11 @@ public class TransactionApplicationService {
     private final Cache<String, Object> transactionCache;
 
     public String createTransaction(TransactionCreateRequest request) {
+        Optional<Transaction> originalTransaction = transactionRepository.findBySourceId(request.getSourceId());
+        if (originalTransaction.isPresent()) {
+            log.error("The transaction is already exist, source Id {}", request.getSourceId());
+            throw new BizException(ErrorCode.DUPLICATED_TRANSACTION.getErrorMsg());
+        }
         Transaction transaction = Transaction.builder()
                 .amount(request.getAmount())
                 .description(request.getDescription())

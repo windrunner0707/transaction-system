@@ -18,6 +18,7 @@ public class Transaction {
 
     private BigDecimal amount;
     private String description;
+    private String sourceId;
 
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();

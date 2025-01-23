@@ -7,6 +7,8 @@ public interface TransactionRepository {
 
     Optional<Transaction> findById(String id);
 
+    Optional<Transaction> findBySourceId(String sourceId);
+
     String save(Transaction transaction);
 
     void delete(String id);

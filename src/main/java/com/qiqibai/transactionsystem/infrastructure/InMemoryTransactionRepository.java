@@ -20,6 +20,13 @@ public class InMemoryTransactionRepository implements TransactionRepository {
     }
 
     @Override
+    public Optional<Transaction> findBySourceId(String sourceId) {
+        return inMemoryDb.values().stream()
+                .filter(it -> it.getSourceId().equals(sourceId))
+                .findFirst();
+    }
+
+    @Override
     public String save(Transaction transaction) {
         inMemoryDb.put(transaction.getId(), transaction);
         return transaction.getId();

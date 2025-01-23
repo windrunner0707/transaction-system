@@ -17,4 +17,6 @@ public class TransactionCreateRequest {
 
     private String description;
 
+    private String sourceId;
+
 }

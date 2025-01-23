@@ -42,11 +42,10 @@ class TransactionApplicationServiceTest {
     @Test
     void testCreateTransaction() {
         // Arrange
-        TransactionCreateRequest request = new TransactionCreateRequest(BigDecimal.valueOf(100.0), "Test Transaction");
-        Transaction transaction = Transaction.builder()
-                .id(UUID.randomUUID().toString())
-                .amount(request.getAmount())
-                .description(request.getDescription())
+        TransactionCreateRequest request = TransactionCreateRequest.builder()
+                .amount(BigDecimal.valueOf(100.0))
+                .description("Test transaction")
+                .sourceId("Test sourceId")
                 .build();
 
         when(transactionRepository.save(any())).thenReturn("id1");
@@ -57,6 +56,31 @@ class TransactionApplicationServiceTest {
         // Assert
         assertNotNull(transactionId);
         verify(transactionRepository, times(1)).save(any(Transaction.class));
+    }
+
+    @Test
+    void testCreateTransaction_duplicatedTransaction() {
+        // Arrange
+        TransactionCreateRequest request = TransactionCreateRequest.builder()
+                .amount(BigDecimal.valueOf(100.0))
+                .description("Test transaction")
+                .sourceId("Test sourceId")
+                .build();
+
+        Transaction transaction = Transaction.builder()
+                .sourceId("Test sourceId")
+                .build();
+
+        when(transactionRepository.findBySourceId("Test sourceId")).thenReturn(Optional.of(transaction));
+        when(transactionRepository.save(any())).thenReturn("id1");
+
+        // Act
+        BizException exception = assertThrows(BizException.class, () -> transactionService.createTransaction(request));
+
+        // Assert
+        assertEquals(ErrorCode.DUPLICATED_TRANSACTION.getErrorMsg(), exception.getMessage());
+        verify(transactionRepository, times(1)).findBySourceId("Test sourceId");
+        verify(transactionRepository, never()).save(any(Transaction.class));
     }
 
     @Test
