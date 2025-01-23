@@ -31,7 +31,7 @@ class TransactionSystemUser(HttpUser):
             "amount": fake.pyfloat(left_digits=3, right_digits=2, positive=True),
             "description": fake.sentence()
         }
-        response = self.client.put(f"/transactions/{transaction_id}", json=payload)
+        response = self.client.patch(f"/transactions/{transaction_id}", json=payload)
         if response.status_code != 200:
             print(f"Modify transaction failed: {response.text}")
 
