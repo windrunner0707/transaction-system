@@ -4,10 +4,7 @@ import com.qiqibai.transactionsystem.domain.transaction.Transaction;
 import com.qiqibai.transactionsystem.domain.transaction.TransactionRepository;
 import org.springframework.stereotype.Repository;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 @Repository
 public class InMemoryTransactionRepository implements TransactionRepository {
@@ -22,7 +19,7 @@ public class InMemoryTransactionRepository implements TransactionRepository {
     @Override
     public Optional<Transaction> findBySourceId(String sourceId) {
         return inMemoryDb.values().stream()
-                .filter(it -> it.getSourceId().equals(sourceId))
+                .filter(it -> Objects.equals(it.getSourceId(), sourceId))
                 .findFirst();
     }
 
