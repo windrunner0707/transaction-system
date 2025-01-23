@@ -20,8 +20,9 @@ public class InMemoryTransactionRepository implements TransactionRepository {
     }
 
     @Override
-    public void save(Transaction transaction) {
+    public String save(Transaction transaction) {
         inMemoryDb.put(transaction.getId(), transaction);
+        return transaction.getId();
     }
 
     @Override
