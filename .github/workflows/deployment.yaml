@@ -7,8 +7,8 @@ on:
 
 env:
   IMAGE_NAME: transaction-system
-  DOCKER_HUB_USER: ${{ secrets.DOCKER_HUB_USER }}
-  DOCKER_HUB_PASSWORD: ${{ secrets.DOCKER_HUB_PASSWORD }}
+  ACR_REGISTRY: registry.cn-hangzhou.aliyuncs.com
+  ACR_NAMESPACE: windrunner0707
 
 jobs:
   build-and-deploy:
@@ -27,16 +27,16 @@ jobs:
       - name: Build with Maven
         run: mvn clean package -DskipTests
 
-      - name: Log in to Docker Hub
-        run: echo "$DOCKER_HUB_PASSWORD" | docker login -u "$DOCKER_HUB_USER" --password-stdin
+      - name: Log in to ACR
+        run: echo "${{ secrets.ACR_PASSWORD }}" | docker login ${{ env.ACR_REGISTRY }} -u "${{ secrets.ACR_USERNAME }}" --password-stdin
 
       - name: Build Docker Image
         run: |
-          docker build -t $DOCKER_HUB_USER/$IMAGE_NAME:latest .
+          docker build -t $ACR_REGISTRY/$ACR_NAMESPACE/$IMAGE_NAME:latest .
 
-      - name: Push Docker Image
+      - name: Push Docker Image to ACR
         run: |
-          docker push $DOCKER_HUB_USER/$IMAGE_NAME:latest
+          docker push $ACR_REGISTRY/$ACR_NAMESPACE/$IMAGE_NAME:latest
 
       - name: Upload deployment.yaml to server
         uses: appleboy/scp-action@v0.1.4
