@@ -5,7 +5,7 @@ FROM openjdk:21-jdk-slim
 WORKDIR /app
 
 # Copy the built jar file into the container
-COPY target/transaction-system.jar /app/transaction-system.jar
+COPY target/transaction-system-0.0.1-SNAPSHOT.jar /app/transaction-system.jar
 
 # Expose the port the application runs on
 EXPOSE 8080
