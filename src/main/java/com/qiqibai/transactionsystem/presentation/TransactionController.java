@@ -19,6 +19,11 @@ public class TransactionController {
 
     private final TransactionApplicationService transactionApplicationService;
 
+    @GetMapping("/li-qiang")
+    public String getLiQiang() {
+        return "Object extends Liqiang";
+    }
+
     @PostMapping
     public String createTransaction(@RequestBody @Valid TransactionCreateRequest request) {
         return transactionApplicationService.createTransaction(request);
