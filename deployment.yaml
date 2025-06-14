@@ -15,8 +15,8 @@ spec:
       imagePullSecrets:
         - name: regcred
       containers:
-        - name: spring-container
-          image: tt5t5ttt/transaction-system:latest
+        - name: transaction-system
+          image: registry.cn-hangzhou.aliyuncs.com/windrunner0707/transaction-system:latest
           ports:
             - containerPort: 8080
           resources:
