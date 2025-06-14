@@ -12,6 +12,8 @@ spec:
       labels:
         app: transaction-system
     spec:
+      imagePullSecrets:
+        - name: regcred
       containers:
         - name: spring-container
           image: tt5t5ttt/transaction-system:latest
