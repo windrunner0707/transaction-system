@@ -7,7 +7,7 @@ on:
 
 env:
   IMAGE_NAME: transaction-system
-  ACR_REGISTRY: registry.cn-hangzhou.aliyuncs.com
+  ACR_REGISTRY: crpi-kw9b5zmptdsw1y03.cn-wulanchabu.personal.cr.aliyuncs.com
   ACR_NAMESPACE: windrunner0707
 
 jobs:

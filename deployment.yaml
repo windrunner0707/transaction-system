@@ -16,7 +16,7 @@ spec:
         - name: regcred
       containers:
         - name: transaction-system
-          image: registry.cn-hangzhou.aliyuncs.com/windrunner0707/transaction-system:latest
+          image: crpi-kw9b5zmptdsw1y03.cn-wulanchabu.personal.cr.aliyuncs.com/windrunner0707/transaction-system:latest
           ports:
             - containerPort: 8080
           resources:
