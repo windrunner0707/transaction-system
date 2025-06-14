@@ -56,4 +56,4 @@ jobs:
           script: |
             export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
             kubectl delete deployment transaction-system --ignore-not-found
-            kubectl apply -f /home/youruser/deploy/deployment.yaml
+            kubectl apply -f /home/${{ secrets.SERVER_USER }}/deploy/deployment.yaml
