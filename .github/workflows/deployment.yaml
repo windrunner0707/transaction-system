@@ -24,8 +24,8 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      - name: Build JAR
-        run: ./mvnw clean package -DskipTests
+      - name: Build with Maven
+        run: mvn clean package -DskipTests
 
       - name: Log in to Docker Hub
         run: echo "$DOCKER_HUB_PASSWORD" | docker login -u "$DOCKER_HUB_USER" --password-stdin
