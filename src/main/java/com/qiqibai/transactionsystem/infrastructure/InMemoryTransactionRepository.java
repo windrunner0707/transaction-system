@@ -4,6 +4,9 @@ import com.qiqibai.transactionsystem.domain.transaction.Transaction;
 import com.qiqibai.transactionsystem.domain.transaction.TransactionRepository;
 import com.qiqibai.transactionsystem.exception.BizException;
 import com.qiqibai.transactionsystem.exception.ErrorCode;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
 
 import java.util.*;
@@ -31,20 +34,21 @@ public class InMemoryTransactionRepository implements TransactionRepository {
     public synchronized String save(Transaction transaction) {
         Transaction existingTransaction = inMemoryDb.get(transaction.getId());
         if (Objects.nonNull(existingTransaction) && existingTransaction.getVersion() != transaction.getVersion()) {
-            throw new BizException(ErrorCode.CONCURRENT_TRANSACTION_MODIFICATION.getErrorMsg());
+            throw new BizException(ErrorCode.CONCURRENT_TRANSACTION_MODIFICATION);
         }
 
-        Transaction transactionToSave = transaction.copy();
-        if (Objects.nonNull(existingTransaction)) {
-            transactionToSave.setVersion(transaction.getVersion() + 1);
-        }
+        Transaction transactionToSave = Objects.nonNull(existingTransaction)
+                ? transaction.toBuilder().version(transaction.getVersion() + 1).build()
+                : transaction.copy();
         inMemoryDb.put(transaction.getId(), transactionToSave);
-        transaction.setVersion(transactionToSave.getVersion());
         return transaction.getId();
     }
 
     @Override
     public synchronized void delete(String id) {
+        if (!inMemoryDb.containsKey(id)) {
+            throw new BizException(ErrorCode.NO_TRANSACTION_FOUND);
+        }
         inMemoryDb.remove(id);
     }
 
@@ -53,6 +57,20 @@ public class InMemoryTransactionRepository implements TransactionRepository {
         return inMemoryDb.values().stream()
                 .map(Transaction::copy)
                 .toList();
+    }
+
+    @Override
+    public synchronized Page<Transaction> findAll(Pageable pageable) {
+        List<Transaction> all = inMemoryDb.values().stream()
+                .map(Transaction::copy)
+                .toList();
+        int total = all.size();
+        int start = (int) pageable.getOffset();
+        if (start >= total) {
+            return new PageImpl<>(List.of(), pageable, total);
+        }
+        int end = Math.min(start + pageable.getPageSize(), total);
+        return new PageImpl<>(all.subList(start, end), pageable, total);
     }
 
 }

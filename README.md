@@ -49,8 +49,8 @@ Guava: for local cache and other util classes
 # Performance Test
 Use Locust to do performance test
 ```commandline
-cd performnace-test
+cd performance-test
 pip install locust
 locust -f locustfile.py --host=http://localhost:8080
 ```
-![performnce.png](performnce.png)
+![performance.png](performance.png)

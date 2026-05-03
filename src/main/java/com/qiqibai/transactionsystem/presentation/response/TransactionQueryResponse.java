@@ -17,6 +17,7 @@ public class TransactionQueryResponse {
     private String id;
     private BigDecimal amount;
     private String description;
+    private String sourceId;
     private TransactionStatus status;
     private String statusReason;
     private long version;
@@ -28,6 +29,7 @@ public class TransactionQueryResponse {
                 .id(transaction.getId())
                 .amount(transaction.getAmount())
                 .description(transaction.getDescription())
+                .sourceId(transaction.getSourceId())
                 .status(transaction.getStatus())
                 .statusReason(transaction.getStatusReason())
                 .version(transaction.getVersion())
