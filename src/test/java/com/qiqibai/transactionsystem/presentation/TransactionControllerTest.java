@@ -6,6 +6,8 @@ import com.qiqibai.transactionsystem.application.command.CreateTransactionComman
 import com.qiqibai.transactionsystem.application.command.SucceedTransactionCommand;
 import com.qiqibai.transactionsystem.application.command.TransactionActionCommand;
 import com.qiqibai.transactionsystem.application.command.UpdateTransactionCommand;
+import com.qiqibai.transactionsystem.domain.transaction.Transaction;
+import com.qiqibai.transactionsystem.domain.transaction.TransactionEvent;
 import com.qiqibai.transactionsystem.domain.transaction.TransactionStatus;
 import com.qiqibai.transactionsystem.exception.BizException;
 import com.qiqibai.transactionsystem.exception.ErrorCode;
@@ -14,8 +16,6 @@ import com.qiqibai.transactionsystem.presentation.request.TransactionActionReque
 import com.qiqibai.transactionsystem.presentation.request.TransactionCreateRequest;
 import com.qiqibai.transactionsystem.presentation.request.TransactionSuccessRequest;
 import com.qiqibai.transactionsystem.presentation.request.TransactionUpdateRequest;
-import com.qiqibai.transactionsystem.presentation.response.TransactionEventResponse;
-import com.qiqibai.transactionsystem.presentation.response.TransactionQueryResponse;
 import com.qiqibai.transactionsystem.domain.transaction.TransactionType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -239,19 +239,20 @@ class TransactionControllerTest {
 
     @Test
     void shouldReturnTransactionById() throws Exception {
-        when(transactionApplicationService.getTransactionById("tx-1")).thenReturn(TransactionQueryResponse.builder()
-                .id("tx-1")
-                .amount(BigDecimal.valueOf(99))
-                .currency("USD")
-                .description("stored")
-                .sourceId("src-1")
-                .type(TransactionType.PAYMENT)
-                .status(TransactionStatus.PROCESSING)
-                .statusReason("review")
-                .attemptCount(1)
-                .createdAt(LocalDateTime.of(2024, 1, 1, 10, 0))
-                .updatedAt(LocalDateTime.of(2024, 1, 1, 10, 5))
-                .build());
+        when(transactionApplicationService.getTransactionById("tx-1")).thenReturn(
+                Transaction.builder()
+                        .id("tx-1")
+                        .amount(BigDecimal.valueOf(99))
+                        .currency("USD")
+                        .description("stored")
+                        .sourceId("src-1")
+                        .type(TransactionType.PAYMENT)
+                        .status(TransactionStatus.PROCESSING)
+                        .statusReason("review")
+                        .attemptCount(1)
+                        .createdAt(LocalDateTime.of(2024, 1, 1, 10, 0))
+                        .updatedAt(LocalDateTime.of(2024, 1, 1, 10, 5))
+                        .build());
 
         mockMvc.perform(get("/transactions/tx-1"))
                 .andExpect(status().isOk())
@@ -270,8 +271,8 @@ class TransactionControllerTest {
     void shouldReturnPagedTransactions() throws Exception {
         when(transactionApplicationService.getAllTransactionsByPage(any(), any())).thenReturn(new PageImpl<>(
                 List.of(
-                        TransactionQueryResponse.builder().id("tx-1").amount(BigDecimal.ONE).status(TransactionStatus.PENDING).build(),
-                        TransactionQueryResponse.builder().id("tx-2").amount(BigDecimal.TEN).status(TransactionStatus.SUCCEEDED).build()
+                        Transaction.builder().id("tx-1").amount(BigDecimal.ONE).status(TransactionStatus.PENDING).build(),
+                        Transaction.builder().id("tx-2").amount(BigDecimal.TEN).status(TransactionStatus.SUCCEEDED).build()
                 ),
                 PageRequest.of(1, 2),
                 5
@@ -291,7 +292,7 @@ class TransactionControllerTest {
     void shouldFilterTransactionsByStatus() throws Exception {
         when(transactionApplicationService.getAllTransactionsByPage(any(), eq(TransactionStatus.PENDING)))
                 .thenReturn(new PageImpl<>(
-                        List.of(TransactionQueryResponse.builder().id("tx-3").status(TransactionStatus.PENDING).build()),
+                        List.of(Transaction.builder().id("tx-3").status(TransactionStatus.PENDING).build()),
                         PageRequest.of(0, 10),
                         1
                 ));
@@ -305,7 +306,7 @@ class TransactionControllerTest {
     @Test
     void shouldReturnTransactionHistory() throws Exception {
         when(transactionApplicationService.getTransactionHistory("tx-1")).thenReturn(List.of(
-                new TransactionEventResponse("evt-1", "tx-1", "CREATED",
+                new TransactionEvent("evt-1", "tx-1", "CREATED",
                         null, TransactionStatus.PENDING, null, null,
                         LocalDateTime.of(2024, 1, 1, 10, 0))
         ));

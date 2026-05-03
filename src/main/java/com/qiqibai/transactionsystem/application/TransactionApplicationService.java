@@ -6,12 +6,11 @@ import com.qiqibai.transactionsystem.application.command.TransactionActionComman
 import com.qiqibai.transactionsystem.application.command.UpdateTransactionCommand;
 import com.qiqibai.transactionsystem.domain.transaction.Transaction;
 import com.qiqibai.transactionsystem.domain.transaction.TransactionEvent;
+import com.qiqibai.transactionsystem.domain.transaction.TransactionEventLog;
 import com.qiqibai.transactionsystem.domain.transaction.TransactionRepository;
 import com.qiqibai.transactionsystem.domain.transaction.TransactionStatus;
 import com.qiqibai.transactionsystem.exception.BizException;
 import com.qiqibai.transactionsystem.exception.ErrorCode;
-import com.qiqibai.transactionsystem.presentation.response.TransactionEventResponse;
-import com.qiqibai.transactionsystem.presentation.response.TransactionQueryResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -32,23 +31,14 @@ public class TransactionApplicationService {
     private final TransactionEventLog transactionEventLog;
 
     public String createTransaction(CreateTransactionCommand command) {
-        if (command.amount() != null && command.amount().compareTo(Transaction.MAX_AMOUNT) > 0) {
-            throw new BizException(ErrorCode.AMOUNT_EXCEEDS_LIMIT);
-        }
         if (Objects.nonNull(command.sourceId())
                 && transactionRepository.findBySourceId(command.sourceId()).isPresent()) {
             log.error("The transaction already exists, sourceId {}", command.sourceId());
             throw new BizException(ErrorCode.DUPLICATED_TRANSACTION);
         }
-        Transaction transaction = Transaction.builder()
-                .amount(command.amount())
-                .currency(command.currency())
-                .description(command.description())
-                .sourceId(command.sourceId())
-                .type(command.type())
-                .payerId(command.payerId())
-                .payeeId(command.payeeId())
-                .build();
+        Transaction transaction = Transaction.create(
+                command.amount(), command.currency(), command.description(),
+                command.sourceId(), command.type(), command.payerId(), command.payeeId());
         transactionRepository.save(transaction);
         transactionEventLog.record(TransactionEvent.created(transaction.getId()));
         return transaction.getId();
@@ -99,33 +89,28 @@ public class TransactionApplicationService {
                 id, previousStatus, TransactionStatus.PENDING, null, null));
     }
 
-    public TransactionQueryResponse getTransactionById(String id) {
+    public Transaction getTransactionById(String id) {
         return transactionCache.get(id)
-                .map(TransactionQueryResponse::fromDomain)
                 .orElseGet(() -> {
                     log.info("Cannot find transaction {} in cache, loading from repository", id);
                     Transaction transaction = transactionRepository.findById(id)
                             .orElseThrow(() -> new BizException(ErrorCode.NO_TRANSACTION_FOUND));
                     transactionCache.put(id, transaction);
-                    return TransactionQueryResponse.fromDomain(transaction);
+                    return transaction;
                 });
     }
 
-    public Page<TransactionQueryResponse> getAllTransactionsByPage(Pageable pageable, TransactionStatus status) {
+    public Page<Transaction> getAllTransactionsByPage(Pageable pageable, TransactionStatus status) {
         if (status != null) {
-            return transactionRepository.findAll(pageable, status)
-                    .map(TransactionQueryResponse::fromDomain);
+            return transactionRepository.findAll(pageable, status);
         }
-        return transactionRepository.findAll(pageable)
-                .map(TransactionQueryResponse::fromDomain);
+        return transactionRepository.findAll(pageable);
     }
 
-    public List<TransactionEventResponse> getTransactionHistory(String id) {
+    public List<TransactionEvent> getTransactionHistory(String id) {
         transactionRepository.findById(id)
                 .orElseThrow(() -> new BizException(ErrorCode.NO_TRANSACTION_FOUND));
-        return transactionEventLog.findByTransactionId(id).stream()
-                .map(TransactionEventResponse::fromDomain)
-                .toList();
+        return transactionEventLog.findByTransactionId(id);
     }
 
     private TransactionStatus updateTransaction(String id, java.util.function.Consumer<Transaction> updater) {

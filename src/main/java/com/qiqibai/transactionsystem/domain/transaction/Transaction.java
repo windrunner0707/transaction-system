@@ -49,6 +49,28 @@ public class Transaction {
     @Builder.Default
     private LocalDateTime updatedAt = LocalDateTime.now();
 
+    public static Transaction create(BigDecimal amount, String currency, String description,
+                                     String sourceId, TransactionType type,
+                                     String payerId, String payeeId) {
+        if (amount != null) {
+            if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new BizException(ErrorCode.INVALID_AMOUNT);
+            }
+            if (amount.compareTo(MAX_AMOUNT) > 0) {
+                throw new BizException(ErrorCode.AMOUNT_EXCEEDS_LIMIT);
+            }
+        }
+        return Transaction.builder()
+                .amount(amount)
+                .currency(currency)
+                .description(description)
+                .sourceId(sourceId)
+                .type(type)
+                .payerId(payerId)
+                .payeeId(payeeId)
+                .build();
+    }
+
     public void modify(BigDecimal amount, String description) {
         ensureMutable();
         if (amount != null) {

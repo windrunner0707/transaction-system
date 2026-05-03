@@ -7,10 +7,10 @@ import com.qiqibai.transactionsystem.application.command.UpdateTransactionComman
 import com.qiqibai.transactionsystem.domain.transaction.Transaction;
 import com.qiqibai.transactionsystem.domain.transaction.TransactionStatus;
 import com.qiqibai.transactionsystem.domain.transaction.TransactionType;
+import com.qiqibai.transactionsystem.domain.transaction.TransactionEventLog;
 import com.qiqibai.transactionsystem.domain.transaction.TransactionRepository;
 import com.qiqibai.transactionsystem.exception.BizException;
 import com.qiqibai.transactionsystem.exception.ErrorCode;
-import com.qiqibai.transactionsystem.presentation.response.TransactionQueryResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -199,12 +199,12 @@ class TransactionApplicationServiceTest {
         when(transactionCache.get(transactionId)).thenReturn(Optional.of(transaction));
 
         // Act
-        TransactionQueryResponse response = transactionService.getTransactionById(transactionId);
+        Transaction result = transactionService.getTransactionById(transactionId);
 
         // Assert
-        assertNotNull(response);
-        assertEquals(transactionId, response.getId());
-        assertEquals(TransactionStatus.PENDING, response.getStatus());
+        assertNotNull(result);
+        assertEquals(transactionId, result.getId());
+        assertEquals(TransactionStatus.PENDING, result.getStatus());
         verify(transactionCache, times(1)).get(transactionId);
         verify(transactionRepository, never()).findById(transactionId);
     }
@@ -223,12 +223,12 @@ class TransactionApplicationServiceTest {
         when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
 
         // Act
-        TransactionQueryResponse response = transactionService.getTransactionById(transactionId);
+        Transaction result = transactionService.getTransactionById(transactionId);
 
         // Assert
-        assertNotNull(response);
-        assertEquals(transactionId, response.getId());
-        assertEquals(TransactionStatus.PENDING, response.getStatus());
+        assertNotNull(result);
+        assertEquals(transactionId, result.getId());
+        assertEquals(TransactionStatus.PENDING, result.getStatus());
         verify(transactionCache, times(1)).get(transactionId);
         verify(transactionRepository, times(1)).findById(transactionId);
         verify(transactionCache, times(1)).put(transactionId, transaction);
@@ -261,7 +261,7 @@ class TransactionApplicationServiceTest {
         when(transactionRepository.findAll(pageable)).thenReturn(new PageImpl<>(pageItems, pageable, 5));
 
         // Act
-        Page<TransactionQueryResponse> result = transactionService.getAllTransactionsByPage(pageable, null);
+        Page<Transaction> result = transactionService.getAllTransactionsByPage(pageable, null);
 
         // Assert
         assertEquals(2, result.getContent().size());
@@ -279,7 +279,7 @@ class TransactionApplicationServiceTest {
         when(transactionRepository.findAll(pageable, TransactionStatus.PENDING))
                 .thenReturn(new PageImpl<>(pageItems, pageable, 1));
 
-        Page<TransactionQueryResponse> result = transactionService.getAllTransactionsByPage(pageable, TransactionStatus.PENDING);
+        Page<Transaction> result = transactionService.getAllTransactionsByPage(pageable, TransactionStatus.PENDING);
 
         assertEquals(1, result.getContent().size());
         verify(transactionRepository, times(1)).findAll(pageable, TransactionStatus.PENDING);
@@ -292,7 +292,7 @@ class TransactionApplicationServiceTest {
         when(transactionRepository.findAll(pageable)).thenReturn(new PageImpl<>(List.of(), pageable, 10));
 
         // Act
-        Page<TransactionQueryResponse> result = transactionService.getAllTransactionsByPage(pageable, null);
+        Page<Transaction> result = transactionService.getAllTransactionsByPage(pageable, null);
 
         // Assert
         assertEquals(0, result.getContent().size());

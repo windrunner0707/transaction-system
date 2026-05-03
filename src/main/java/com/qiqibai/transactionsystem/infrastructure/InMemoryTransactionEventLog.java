@@ -1,6 +1,6 @@
 package com.qiqibai.transactionsystem.infrastructure;
 
-import com.qiqibai.transactionsystem.application.TransactionEventLog;
+import com.qiqibai.transactionsystem.domain.transaction.TransactionEventLog;
 import com.qiqibai.transactionsystem.domain.transaction.TransactionEvent;
 import org.springframework.stereotype.Component;
 

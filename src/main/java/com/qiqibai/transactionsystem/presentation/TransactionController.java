@@ -82,19 +82,22 @@ public class TransactionController {
 
     @GetMapping("/{id}")
     public TransactionQueryResponse getTransactionById(@PathVariable String id) {
-        return transactionApplicationService.getTransactionById(id);
+        return TransactionQueryResponse.fromDomain(transactionApplicationService.getTransactionById(id));
     }
 
     @GetMapping
     public ResponseEntity<Page<TransactionQueryResponse>> getAllTransactionsByPage(
             @PageableDefault() Pageable pageable,
             @RequestParam(required = false) TransactionStatus status) {
-        return ResponseEntity.ok(transactionApplicationService.getAllTransactionsByPage(pageable, status));
+        return ResponseEntity.ok(transactionApplicationService.getAllTransactionsByPage(pageable, status)
+                .map(TransactionQueryResponse::fromDomain));
     }
 
     @GetMapping("/{id}/history")
     public List<TransactionEventResponse> getTransactionHistory(@PathVariable String id) {
-        return transactionApplicationService.getTransactionHistory(id);
+        return transactionApplicationService.getTransactionHistory(id).stream()
+                .map(TransactionEventResponse::fromDomain)
+                .toList();
     }
 
 }
