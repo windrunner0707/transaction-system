@@ -65,7 +65,7 @@ public class InMemoryTransactionRepository implements TransactionRepository {
                 .map(Transaction::copy)
                 .toList();
         int total = all.size();
-        int start = (int) pageable.getOffset();
+        int start = Math.toIntExact(pageable.getOffset());
         if (start >= total) {
             return new PageImpl<>(List.of(), pageable, total);
         }
