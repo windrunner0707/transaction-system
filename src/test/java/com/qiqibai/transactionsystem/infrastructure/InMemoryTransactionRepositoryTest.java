@@ -102,13 +102,13 @@ class InMemoryTransactionRepositoryTest {
                 .build();
         repository.save(transaction);
 
-        List<Transaction> transactions = repository.findAll();
-        transactions.getFirst().setDescription("changed outside repository");
+        List<Transaction> retrievedTransactions = repository.findAll();
+        retrievedTransactions.getFirst().setDescription("changed outside repository");
 
         Transaction reloaded = repository.findById(transaction.getId()).orElseThrow();
-        assertEquals(1, transactions.size());
-        assertNotSame(transaction, transactions.getFirst());
-        assertEquals(transaction.getId(), transactions.getFirst().getId());
+        assertEquals(1, retrievedTransactions.size());
+        assertNotSame(transaction, retrievedTransactions.getFirst());
+        assertEquals(transaction.getId(), retrievedTransactions.getFirst().getId());
         assertEquals(transaction.getDescription(), reloaded.getDescription());
     }
 }
