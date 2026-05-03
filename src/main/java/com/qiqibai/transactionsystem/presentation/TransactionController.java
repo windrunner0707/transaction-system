@@ -1,6 +1,9 @@
 package com.qiqibai.transactionsystem.presentation;
 
 import com.qiqibai.transactionsystem.application.TransactionApplicationService;
+import com.qiqibai.transactionsystem.application.command.CreateTransactionCommand;
+import com.qiqibai.transactionsystem.application.command.TransactionActionCommand;
+import com.qiqibai.transactionsystem.application.command.UpdateTransactionCommand;
 import com.qiqibai.transactionsystem.presentation.request.TransactionActionRequest;
 import com.qiqibai.transactionsystem.presentation.request.TransactionCreateRequest;
 import com.qiqibai.transactionsystem.presentation.request.TransactionUpdateRequest;
@@ -13,7 +16,6 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-@CrossOrigin(origins = "*")
 @RestController
 @RequestMapping("/transactions")
 @RequiredArgsConstructor
@@ -21,14 +23,10 @@ public class TransactionController {
 
     private final TransactionApplicationService transactionApplicationService;
 
-    @GetMapping("/li-qiang")
-    public String getLiQiang() {
-        return "Object extends Liqiang";
-    }
-
     @PostMapping
     public String createTransaction(@RequestBody @Valid TransactionCreateRequest request) {
-        return transactionApplicationService.createTransaction(request);
+        return transactionApplicationService.createTransaction(
+                new CreateTransactionCommand(request.getAmount(), request.getDescription(), request.getSourceId()));
     }
 
     @DeleteMapping("/{id}")
@@ -38,7 +36,8 @@ public class TransactionController {
 
     @PatchMapping("/{id}")
     public void modifyTransaction(@PathVariable String id, @RequestBody @Valid TransactionUpdateRequest request) {
-        transactionApplicationService.modifyTransaction(id, request);
+        transactionApplicationService.modifyTransaction(id,
+                new UpdateTransactionCommand(request.getAmount(), request.getDescription()));
     }
 
     @PostMapping("/{id}/processing")
@@ -53,12 +52,12 @@ public class TransactionController {
 
     @PostMapping("/{id}/failure")
     public void markFailed(@PathVariable String id, @RequestBody @Valid TransactionActionRequest request) {
-        transactionApplicationService.markFailed(id, request);
+        transactionApplicationService.markFailed(id, new TransactionActionCommand(request.getReason()));
     }
 
     @PostMapping("/{id}/cancel")
     public void cancel(@PathVariable String id, @RequestBody @Valid TransactionActionRequest request) {
-        transactionApplicationService.cancel(id, request);
+        transactionApplicationService.cancel(id, new TransactionActionCommand(request.getReason()));
     }
 
     @GetMapping("/{id}")

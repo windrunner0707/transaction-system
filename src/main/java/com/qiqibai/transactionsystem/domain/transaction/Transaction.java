@@ -9,7 +9,6 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Getter
-@Setter
 @Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
@@ -65,13 +64,13 @@ public class Transaction {
 
     private void ensureMutable() {
         if (status != TransactionStatus.PENDING) {
-            throw new BizException(ErrorCode.INVALID_TRANSACTION_STATUS_TRANSITION.getErrorMsg());
+            throw new BizException(ErrorCode.INVALID_TRANSACTION_STATUS_TRANSITION);
         }
     }
 
     private void transitTo(TransactionStatus targetStatus, String reason) {
         if (!status.canTransitTo(targetStatus)) {
-            throw new BizException(ErrorCode.INVALID_TRANSACTION_STATUS_TRANSITION.getErrorMsg());
+            throw new BizException(ErrorCode.INVALID_TRANSACTION_STATUS_TRANSITION);
         }
         this.status = targetStatus;
         this.statusReason = reason;

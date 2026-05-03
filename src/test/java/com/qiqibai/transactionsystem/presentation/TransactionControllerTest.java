@@ -2,8 +2,12 @@ package com.qiqibai.transactionsystem.presentation;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qiqibai.transactionsystem.application.TransactionApplicationService;
+import com.qiqibai.transactionsystem.application.command.CreateTransactionCommand;
+import com.qiqibai.transactionsystem.application.command.TransactionActionCommand;
+import com.qiqibai.transactionsystem.application.command.UpdateTransactionCommand;
 import com.qiqibai.transactionsystem.domain.transaction.TransactionStatus;
 import com.qiqibai.transactionsystem.exception.BizException;
+import com.qiqibai.transactionsystem.exception.ErrorCode;
 import com.qiqibai.transactionsystem.exception.GlobalExceptionHandler;
 import com.qiqibai.transactionsystem.presentation.request.TransactionActionRequest;
 import com.qiqibai.transactionsystem.presentation.request.TransactionCreateRequest;
@@ -51,15 +55,8 @@ class TransactionControllerTest {
     }
 
     @Test
-    void shouldReturnHealthCheckMessage() throws Exception {
-        mockMvc.perform(get("/transactions/li-qiang"))
-                .andExpect(status().isOk())
-                .andExpect(content().string("Object extends Liqiang"));
-    }
-
-    @Test
     void shouldCreateTransaction() throws Exception {
-        when(transactionApplicationService.createTransaction(any(TransactionCreateRequest.class))).thenReturn("tx-1");
+        when(transactionApplicationService.createTransaction(any(CreateTransactionCommand.class))).thenReturn("tx-1");
 
         mockMvc.perform(post("/transactions")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -73,7 +70,7 @@ class TransactionControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string("tx-1"));
 
-        verify(transactionApplicationService).createTransaction(any(TransactionCreateRequest.class));
+        verify(transactionApplicationService).createTransaction(any(CreateTransactionCommand.class));
     }
 
     @Test
@@ -87,6 +84,20 @@ class TransactionControllerTest {
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.amount").value("amount should not be null"));
+    }
+
+    @Test
+    void shouldRejectNonPositiveAmount() throws Exception {
+        mockMvc.perform(post("/transactions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "amount": -10,
+                                  "description": "negative amount"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.amount").value("amount must be positive"));
     }
 
     @Test
@@ -105,7 +116,7 @@ class TransactionControllerTest {
                                 new TransactionUpdateRequest(BigDecimal.valueOf(42), "updated"))))
                 .andExpect(status().isOk());
 
-        verify(transactionApplicationService).modifyTransaction(eq("tx-1"), any(TransactionUpdateRequest.class));
+        verify(transactionApplicationService).modifyTransaction(eq("tx-1"), any(UpdateTransactionCommand.class));
     }
 
     @Test
@@ -131,7 +142,7 @@ class TransactionControllerTest {
                         .content(objectMapper.writeValueAsString(new TransactionActionRequest("declined"))))
                 .andExpect(status().isOk());
 
-        verify(transactionApplicationService).markFailed(eq("tx-1"), any(TransactionActionRequest.class));
+        verify(transactionApplicationService).markFailed(eq("tx-1"), any(TransactionActionCommand.class));
     }
 
     @Test
@@ -141,7 +152,7 @@ class TransactionControllerTest {
                         .content(objectMapper.writeValueAsString(new TransactionActionRequest("duplicate"))))
                 .andExpect(status().isOk());
 
-        verify(transactionApplicationService).cancel(eq("tx-1"), any(TransactionActionRequest.class));
+        verify(transactionApplicationService).cancel(eq("tx-1"), any(TransactionActionCommand.class));
     }
 
     @Test
@@ -163,6 +174,7 @@ class TransactionControllerTest {
                 .id("tx-1")
                 .amount(BigDecimal.valueOf(99))
                 .description("stored")
+                .sourceId("src-1")
                 .status(TransactionStatus.PROCESSING)
                 .statusReason("review")
                 .version(2L)
@@ -174,6 +186,7 @@ class TransactionControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value("tx-1"))
                 .andExpect(jsonPath("$.amount").value(99))
+                .andExpect(jsonPath("$.sourceId").value("src-1"))
                 .andExpect(jsonPath("$.status").value("PROCESSING"))
                 .andExpect(jsonPath("$.statusReason").value("review"))
                 .andExpect(jsonPath("$.version").value(2));
@@ -203,10 +216,11 @@ class TransactionControllerTest {
     @Test
     void shouldTranslateBizExceptionToBadRequest() throws Exception {
         when(transactionApplicationService.getTransactionById("missing"))
-                .thenThrow(new BizException("No transaction found."));
+                .thenThrow(new BizException(ErrorCode.NO_TRANSACTION_FOUND));
 
         mockMvc.perform(get("/transactions/missing"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("No transaction found."));
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("No transaction found."))
+                .andExpect(jsonPath("$.code").value("Error-001"));
     }
 }

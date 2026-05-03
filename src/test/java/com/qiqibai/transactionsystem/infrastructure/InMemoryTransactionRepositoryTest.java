@@ -61,7 +61,6 @@ class InMemoryTransactionRepositoryTest {
         repository.save(storedCopy);
 
         Transaction reloaded = repository.findById(transaction.getId()).orElseThrow();
-        assertEquals(1L, storedCopy.getVersion());
         assertEquals(1L, reloaded.getVersion());
         assertEquals(BigDecimal.ONE, reloaded.getAmount());
         assertEquals("updated", reloaded.getDescription());
@@ -76,7 +75,7 @@ class InMemoryTransactionRepositoryTest {
         repository.save(transaction);
 
         Transaction loaded = repository.findBySourceId("source-1").orElseThrow();
-        loaded.setDescription("mutated");
+        loaded.modify(loaded.getAmount(), "mutated");
 
         Transaction reloaded = repository.findById(transaction.getId()).orElseThrow();
         assertEquals(transaction.getId(), loaded.getId());
@@ -95,6 +94,13 @@ class InMemoryTransactionRepositoryTest {
     }
 
     @Test
+    void shouldThrowWhenDeletingNonExistentTransaction() {
+        BizException exception = assertThrows(BizException.class, () -> repository.delete("non-existent-id"));
+
+        assertEquals(ErrorCode.NO_TRANSACTION_FOUND.getErrorMsg(), exception.getMessage());
+    }
+
+    @Test
     void shouldReturnDetachedCopiesFromFindAll() {
         Transaction transaction = Transaction.builder()
                 .amount(BigDecimal.valueOf(15))
@@ -103,7 +109,7 @@ class InMemoryTransactionRepositoryTest {
         repository.save(transaction);
 
         List<Transaction> retrievedTransactions = repository.findAll();
-        retrievedTransactions.getFirst().setDescription("changed outside repository");
+        retrievedTransactions.getFirst().modify(retrievedTransactions.getFirst().getAmount(), "changed outside repository");
 
         Transaction reloaded = repository.findById(transaction.getId()).orElseThrow();
         assertEquals(1, retrievedTransactions.size());

@@ -1,22 +1,19 @@
 package com.qiqibai.transactionsystem.exception;
 
+import lombok.Getter;
+
+@Getter
 public class BizException extends RuntimeException {
-    public BizException() {
+
+    private final ErrorCode errorCode;
+
+    public BizException(ErrorCode errorCode) {
+        super(errorCode.getErrorMsg());
+        this.errorCode = errorCode;
     }
 
-    public BizException(String message) {
-        super(message);
-    }
-
-    public BizException(String message, Throwable cause) {
-        super(message, cause);
-    }
-
-    public BizException(Throwable cause) {
-        super(cause);
-    }
-
-    public BizException(String message, Throwable cause, boolean enableSuppression, boolean writableStackTrace) {
-        super(message, cause, enableSuppression, writableStackTrace);
+    public BizException(ErrorCode errorCode, Throwable cause) {
+        super(errorCode.getErrorMsg(), cause);
+        this.errorCode = errorCode;
     }
 }

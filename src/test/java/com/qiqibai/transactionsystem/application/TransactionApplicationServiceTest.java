@@ -1,20 +1,20 @@
 package com.qiqibai.transactionsystem.application;
 
-import com.google.common.cache.Cache;
+import com.qiqibai.transactionsystem.application.command.CreateTransactionCommand;
+import com.qiqibai.transactionsystem.application.command.TransactionActionCommand;
+import com.qiqibai.transactionsystem.application.command.UpdateTransactionCommand;
 import com.qiqibai.transactionsystem.domain.transaction.Transaction;
 import com.qiqibai.transactionsystem.domain.transaction.TransactionStatus;
 import com.qiqibai.transactionsystem.domain.transaction.TransactionRepository;
 import com.qiqibai.transactionsystem.exception.BizException;
 import com.qiqibai.transactionsystem.exception.ErrorCode;
-import com.qiqibai.transactionsystem.presentation.request.TransactionActionRequest;
-import com.qiqibai.transactionsystem.presentation.request.TransactionCreateRequest;
-import com.qiqibai.transactionsystem.presentation.request.TransactionUpdateRequest;
 import com.qiqibai.transactionsystem.presentation.response.TransactionQueryResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
@@ -22,8 +22,6 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -32,30 +30,27 @@ class TransactionApplicationServiceTest {
 
     private TransactionApplicationService transactionService;
     private TransactionRepository transactionRepository;
-    private Cache<String, Object> transactionCache;
+    private TransactionCache transactionCache;
 
 
     @BeforeEach
     void setUp() {
         transactionRepository = Mockito.mock(TransactionRepository.class);
-        transactionCache = mock(Cache.class);
+        transactionCache = mock(TransactionCache.class);
         transactionService = new TransactionApplicationService(transactionRepository, transactionCache);
     }
 
     @Test
     void testCreateTransaction() {
         // Arrange
-        TransactionCreateRequest request = TransactionCreateRequest.builder()
-                .amount(BigDecimal.valueOf(100.0))
-                .description("Test transaction")
-                .sourceId("Test sourceId")
-                .build();
+        CreateTransactionCommand command = new CreateTransactionCommand(
+                BigDecimal.valueOf(100.0), "Test transaction", "Test sourceId");
 
         when(transactionRepository.findBySourceId("Test sourceId")).thenReturn(Optional.empty());
         when(transactionRepository.save(any())).thenReturn("id1");
 
         // Act
-        String transactionId = transactionService.createTransaction(request);
+        String transactionId = transactionService.createTransaction(command);
 
         // Assert
         assertNotNull(transactionId);
@@ -69,21 +64,17 @@ class TransactionApplicationServiceTest {
     @Test
     void testCreateTransaction_duplicatedTransaction() {
         // Arrange
-        TransactionCreateRequest request = TransactionCreateRequest.builder()
-                .amount(BigDecimal.valueOf(100.0))
-                .description("Test transaction")
-                .sourceId("Test sourceId")
-                .build();
+        CreateTransactionCommand command = new CreateTransactionCommand(
+                BigDecimal.valueOf(100.0), "Test transaction", "Test sourceId");
 
         Transaction transaction = Transaction.builder()
                 .sourceId("Test sourceId")
                 .build();
 
         when(transactionRepository.findBySourceId("Test sourceId")).thenReturn(Optional.of(transaction));
-        when(transactionRepository.save(any())).thenReturn("id1");
 
         // Act
-        BizException exception = assertThrows(BizException.class, () -> transactionService.createTransaction(request));
+        BizException exception = assertThrows(BizException.class, () -> transactionService.createTransaction(command));
 
         // Assert
         assertEquals(ErrorCode.DUPLICATED_TRANSACTION.getErrorMsg(), exception.getMessage());
@@ -110,7 +101,7 @@ class TransactionApplicationServiceTest {
     void testModifyTransaction() {
         // Arrange
         String transactionId = UUID.randomUUID().toString();
-        TransactionUpdateRequest request = new TransactionUpdateRequest(BigDecimal.valueOf(200.0), "Updated Description");
+        UpdateTransactionCommand command = new UpdateTransactionCommand(BigDecimal.valueOf(200.0), "Updated Description");
         Transaction transaction = Transaction.builder()
                 .id(transactionId)
                 .amount(BigDecimal.valueOf(100.0))
@@ -121,20 +112,21 @@ class TransactionApplicationServiceTest {
         when(transactionRepository.save(any(Transaction.class))).thenReturn(transaction.getId());
 
         // Act
-        transactionService.modifyTransaction(transactionId, request);
+        transactionService.modifyTransaction(transactionId, command);
 
         // Assert
-        assertEquals(request.getAmount(), transaction.getAmount());
-        assertEquals(request.getDescription(), transaction.getDescription());
+        ArgumentCaptor<Transaction> captor = ArgumentCaptor.forClass(Transaction.class);
         verify(transactionRepository, times(1)).findById(transactionId);
-        verify(transactionRepository, times(1)).save(transaction);
+        verify(transactionRepository, times(1)).save(captor.capture());
         verify(transactionCache, times(1)).invalidate(transactionId);
+        assertEquals(command.amount(), captor.getValue().getAmount());
+        assertEquals(command.description(), captor.getValue().getDescription());
     }
 
     @Test
     void testModifyTransaction_invalidState() {
         String transactionId = UUID.randomUUID().toString();
-        TransactionUpdateRequest request = new TransactionUpdateRequest(BigDecimal.valueOf(200.0), "Updated Description");
+        UpdateTransactionCommand command = new UpdateTransactionCommand(BigDecimal.valueOf(200.0), "Updated Description");
         Transaction transaction = Transaction.builder()
                 .id(transactionId)
                 .status(TransactionStatus.PROCESSING)
@@ -143,7 +135,7 @@ class TransactionApplicationServiceTest {
         when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
 
         BizException exception = assertThrows(BizException.class,
-                () -> transactionService.modifyTransaction(transactionId, request));
+                () -> transactionService.modifyTransaction(transactionId, command));
 
         assertEquals(ErrorCode.INVALID_TRANSACTION_STATUS_TRANSITION.getErrorMsg(), exception.getMessage());
         verify(transactionRepository, never()).save(any(Transaction.class));
@@ -159,7 +151,7 @@ class TransactionApplicationServiceTest {
                 .description("Cached Transaction")
                 .build();
 
-        when(transactionCache.getIfPresent(transactionId)).thenReturn(transaction);
+        when(transactionCache.get(transactionId)).thenReturn(Optional.of(transaction));
 
         // Act
         TransactionQueryResponse response = transactionService.getTransactionById(transactionId);
@@ -168,7 +160,7 @@ class TransactionApplicationServiceTest {
         assertNotNull(response);
         assertEquals(transactionId, response.getId());
         assertEquals(TransactionStatus.PENDING, response.getStatus());
-        verify(transactionCache, times(1)).getIfPresent(transactionId);
+        verify(transactionCache, times(1)).get(transactionId);
         verify(transactionRepository, never()).findById(transactionId);
     }
 
@@ -182,7 +174,7 @@ class TransactionApplicationServiceTest {
                 .description("DB Transaction")
                 .build();
 
-        when(transactionCache.getIfPresent(transactionId)).thenReturn(null);
+        when(transactionCache.get(transactionId)).thenReturn(Optional.empty());
         when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
 
         // Act
@@ -192,7 +184,7 @@ class TransactionApplicationServiceTest {
         assertNotNull(response);
         assertEquals(transactionId, response.getId());
         assertEquals(TransactionStatus.PENDING, response.getStatus());
-        verify(transactionCache, times(1)).getIfPresent(transactionId);
+        verify(transactionCache, times(1)).get(transactionId);
         verify(transactionRepository, times(1)).findById(transactionId);
         verify(transactionCache, times(1)).put(transactionId, transaction);
     }
@@ -202,88 +194,50 @@ class TransactionApplicationServiceTest {
         // Arrange
         String transactionId = UUID.randomUUID().toString();
 
-        when(transactionCache.getIfPresent(transactionId)).thenReturn(null);
+        when(transactionCache.get(transactionId)).thenReturn(Optional.empty());
         when(transactionRepository.findById(transactionId)).thenReturn(Optional.empty());
 
         // Act & Assert
         BizException exception = assertThrows(BizException.class,
                 () -> transactionService.getTransactionById(transactionId));
         assertEquals(ErrorCode.NO_TRANSACTION_FOUND.getErrorMsg(), exception.getMessage());
-        verify(transactionCache, times(1)).getIfPresent(transactionId);
+        verify(transactionCache, times(1)).get(transactionId);
         verify(transactionRepository, times(1)).findById(transactionId);
     }
 
     @Test
-    void testGetAllTransactionsByPage_normalPagination() {
+    void testGetAllTransactionsByPage() {
         // Arrange
-        List<Transaction> mockTransactions = IntStream.range(0, 10)
-                .mapToObj(i ->
-                        Transaction.builder()
-                                .id(UUID.randomUUID().toString())
-                                .amount(BigDecimal.valueOf(i * 100.0))
-                                .description("Description " + i)
-                                .build())
-                .collect(Collectors.toList());
-        when(transactionRepository.findAll()).thenReturn(mockTransactions);
-
-        Pageable pageable = PageRequest.of(1, 3); // Page 1 with 3 items per page
+        Pageable pageable = PageRequest.of(0, 3);
+        List<Transaction> pageItems = List.of(
+                Transaction.builder().id("tx-1").amount(BigDecimal.valueOf(100.0)).build(),
+                Transaction.builder().id("tx-2").amount(BigDecimal.valueOf(200.0)).build()
+        );
+        when(transactionRepository.findAll(pageable)).thenReturn(new PageImpl<>(pageItems, pageable, 5));
 
         // Act
         Page<TransactionQueryResponse> result = transactionService.getAllTransactionsByPage(pageable);
 
         // Assert
-        assertEquals(3, result.getSize()); // Page size
-        assertEquals(10, result.getTotalElements()); // Total number of elements
-        assertEquals(BigDecimal.valueOf(300.0), result.getContent().get(0).getAmount()); // Verify content (e.g., amount)
-        verify(transactionRepository, times(1)).findAll(); // Ensure repository is called once
+        assertEquals(2, result.getContent().size());
+        assertEquals(5, result.getTotalElements());
+        assertEquals("tx-1", result.getContent().get(0).getId());
+        verify(transactionRepository, times(1)).findAll(pageable);
     }
 
     @Test
-    void testGetAllTransactionsByPage_lastPage() {
+    void testGetAllTransactionsByPage_empty() {
         // Arrange
-        List<Transaction> mockTransactions = IntStream.range(0, 10)
-                .mapToObj(i -> Transaction.builder()
-                        .id(UUID.randomUUID().toString())
-                        .amount(BigDecimal.valueOf(i * 100.0))
-                        .description("Description " + i)
-                        .build())
-                .collect(Collectors.toList());
-        when(transactionRepository.findAll()).thenReturn(mockTransactions);
-
-        Pageable pageable = PageRequest.of(2, 4); // Page 1 with 4 items per page
+        Pageable pageable = PageRequest.of(5, 3);
+        when(transactionRepository.findAll(pageable)).thenReturn(new PageImpl<>(List.of(), pageable, 10));
 
         // Act
         Page<TransactionQueryResponse> result = transactionService.getAllTransactionsByPage(pageable);
 
         // Assert
-        assertEquals(4, result.getSize()); // Remaining items
-        assertEquals(10, result.getTotalElements()); // Total elements
-        assertEquals(BigDecimal.valueOf(800.0), result.getContent().get(0).getAmount()); // Verify amount
-        verify(transactionRepository, times(1)).findAll();
-    }
-
-    @Test
-    void testGetAllTransactionsByPage_outOfRange() {
-        // Arrange
-        List<Transaction> mockTransactions = IntStream.range(0, 10)
-                .mapToObj(i -> Transaction.builder()
-                        .id(UUID.randomUUID().toString())
-                        .amount(BigDecimal.valueOf(i * 100.0))
-                        .description("Description " + i)
-                        .build())
-                .collect(Collectors.toList());
-        when(transactionRepository.findAll()).thenReturn(mockTransactions);
-
-        Pageable pageable = PageRequest.of(5, 3); // Out of range (page 5 with 3 items per page)
-
-        // Act
-        Page<TransactionQueryResponse> result = transactionService.getAllTransactionsByPage(pageable);
-
-        // Assert
-        assertEquals(3, result.getSize()); // No items
-        assertEquals(10, result.getTotalElements()); // Total elements
-        assertEquals(0, result.getContent().size()); // Empty content
-        verify(transactionRepository, times(1)).findAll();
+        assertEquals(0, result.getContent().size());
+        assertEquals(10, result.getTotalElements());
+        verify(transactionRepository, times(1)).findAll(pageable);
     }
 
     @Test
@@ -332,7 +286,7 @@ class TransactionApplicationServiceTest {
         when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
         when(transactionRepository.save(any(Transaction.class))).thenReturn(transactionId);
 
-        transactionService.markFailed(transactionId, new TransactionActionRequest("bank rejected"));
+        transactionService.markFailed(transactionId, new TransactionActionCommand("bank rejected"));
 
         assertEquals(TransactionStatus.FAILED, transaction.getStatus());
         assertEquals("bank rejected", transaction.getStatusReason());
@@ -350,7 +304,7 @@ class TransactionApplicationServiceTest {
         when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
         when(transactionRepository.save(any(Transaction.class))).thenReturn(transactionId);
 
-        transactionService.cancel(transactionId, new TransactionActionRequest("user canceled"));
+        transactionService.cancel(transactionId, new TransactionActionCommand("user canceled"));
 
         assertEquals(TransactionStatus.CANCELED, transaction.getStatus());
         assertEquals("user canceled", transaction.getStatusReason());
