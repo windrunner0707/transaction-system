@@ -2,14 +2,17 @@ package com.qiqibai.transactionsystem.application;
 
 import com.google.common.cache.Cache;
 import com.qiqibai.transactionsystem.domain.transaction.Transaction;
+import com.qiqibai.transactionsystem.domain.transaction.TransactionStatus;
 import com.qiqibai.transactionsystem.domain.transaction.TransactionRepository;
 import com.qiqibai.transactionsystem.exception.BizException;
 import com.qiqibai.transactionsystem.exception.ErrorCode;
+import com.qiqibai.transactionsystem.presentation.request.TransactionActionRequest;
 import com.qiqibai.transactionsystem.presentation.request.TransactionCreateRequest;
 import com.qiqibai.transactionsystem.presentation.request.TransactionUpdateRequest;
 import com.qiqibai.transactionsystem.presentation.response.TransactionQueryResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -48,6 +51,7 @@ class TransactionApplicationServiceTest {
                 .sourceId("Test sourceId")
                 .build();
 
+        when(transactionRepository.findBySourceId("Test sourceId")).thenReturn(Optional.empty());
         when(transactionRepository.save(any())).thenReturn("id1");
 
         // Act
@@ -55,7 +59,11 @@ class TransactionApplicationServiceTest {
 
         // Assert
         assertNotNull(transactionId);
-        verify(transactionRepository, times(1)).save(any(Transaction.class));
+        ArgumentCaptor<Transaction> transactionArgumentCaptor = ArgumentCaptor.forClass(Transaction.class);
+        verify(transactionRepository).save(transactionArgumentCaptor.capture());
+        verify(transactionRepository).findBySourceId("Test sourceId");
+        assertEquals(TransactionStatus.PENDING, transactionArgumentCaptor.getValue().getStatus());
+        assertEquals("Test sourceId", transactionArgumentCaptor.getValue().getSourceId());
     }
 
     @Test
@@ -95,6 +103,7 @@ class TransactionApplicationServiceTest {
 
         // Assert
         verify(transactionRepository, times(1)).delete(transactionId);
+        verify(transactionCache, times(1)).invalidate(transactionId);
     }
 
     @Test
@@ -119,6 +128,25 @@ class TransactionApplicationServiceTest {
         assertEquals(request.getDescription(), transaction.getDescription());
         verify(transactionRepository, times(1)).findById(transactionId);
         verify(transactionRepository, times(1)).save(transaction);
+        verify(transactionCache, times(1)).invalidate(transactionId);
+    }
+
+    @Test
+    void testModifyTransaction_invalidState() {
+        String transactionId = UUID.randomUUID().toString();
+        TransactionUpdateRequest request = new TransactionUpdateRequest(BigDecimal.valueOf(200.0), "Updated Description");
+        Transaction transaction = Transaction.builder()
+                .id(transactionId)
+                .status(TransactionStatus.PROCESSING)
+                .build();
+
+        when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
+
+        BizException exception = assertThrows(BizException.class,
+                () -> transactionService.modifyTransaction(transactionId, request));
+
+        assertEquals(ErrorCode.INVALID_TRANSACTION_STATUS_TRANSITION.getErrorMsg(), exception.getMessage());
+        verify(transactionRepository, never()).save(any(Transaction.class));
     }
 
     @Test
@@ -139,6 +167,7 @@ class TransactionApplicationServiceTest {
         // Assert
         assertNotNull(response);
         assertEquals(transactionId, response.getId());
+        assertEquals(TransactionStatus.PENDING, response.getStatus());
         verify(transactionCache, times(1)).getIfPresent(transactionId);
         verify(transactionRepository, never()).findById(transactionId);
     }
@@ -162,6 +191,7 @@ class TransactionApplicationServiceTest {
         // Assert
         assertNotNull(response);
         assertEquals(transactionId, response.getId());
+        assertEquals(TransactionStatus.PENDING, response.getStatus());
         verify(transactionCache, times(1)).getIfPresent(transactionId);
         verify(transactionRepository, times(1)).findById(transactionId);
         verify(transactionCache, times(1)).put(transactionId, transaction);
@@ -254,6 +284,93 @@ class TransactionApplicationServiceTest {
         assertEquals(10, result.getTotalElements()); // Total elements
         assertEquals(0, result.getContent().size()); // Empty content
         verify(transactionRepository, times(1)).findAll();
+    }
+
+    @Test
+    void testStartProcessing() {
+        String transactionId = UUID.randomUUID().toString();
+        Transaction transaction = Transaction.builder()
+                .id(transactionId)
+                .status(TransactionStatus.PENDING)
+                .build();
+
+        when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
+        when(transactionRepository.save(any(Transaction.class))).thenReturn(transactionId);
+
+        transactionService.startProcessing(transactionId);
+
+        assertEquals(TransactionStatus.PROCESSING, transaction.getStatus());
+        verify(transactionRepository).save(transaction);
+        verify(transactionCache).invalidate(transactionId);
+    }
+
+    @Test
+    void testMarkSucceeded() {
+        String transactionId = UUID.randomUUID().toString();
+        Transaction transaction = Transaction.builder()
+                .id(transactionId)
+                .status(TransactionStatus.PROCESSING)
+                .build();
+
+        when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
+        when(transactionRepository.save(any(Transaction.class))).thenReturn(transactionId);
+
+        transactionService.markSucceeded(transactionId);
+
+        assertEquals(TransactionStatus.SUCCEEDED, transaction.getStatus());
+        assertNull(transaction.getStatusReason());
+    }
+
+    @Test
+    void testMarkFailed() {
+        String transactionId = UUID.randomUUID().toString();
+        Transaction transaction = Transaction.builder()
+                .id(transactionId)
+                .status(TransactionStatus.PROCESSING)
+                .build();
+
+        when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
+        when(transactionRepository.save(any(Transaction.class))).thenReturn(transactionId);
+
+        transactionService.markFailed(transactionId, new TransactionActionRequest("bank rejected"));
+
+        assertEquals(TransactionStatus.FAILED, transaction.getStatus());
+        assertEquals("bank rejected", transaction.getStatusReason());
+        verify(transactionCache).invalidate(transactionId);
+    }
+
+    @Test
+    void testCancel() {
+        String transactionId = UUID.randomUUID().toString();
+        Transaction transaction = Transaction.builder()
+                .id(transactionId)
+                .status(TransactionStatus.PENDING)
+                .build();
+
+        when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
+        when(transactionRepository.save(any(Transaction.class))).thenReturn(transactionId);
+
+        transactionService.cancel(transactionId, new TransactionActionRequest("user canceled"));
+
+        assertEquals(TransactionStatus.CANCELED, transaction.getStatus());
+        assertEquals("user canceled", transaction.getStatusReason());
+    }
+
+    @Test
+    void testInvalidTransition() {
+        String transactionId = UUID.randomUUID().toString();
+        Transaction transaction = Transaction.builder()
+                .id(transactionId)
+                .status(TransactionStatus.SUCCEEDED)
+                .build();
+
+        when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
+
+        BizException exception = assertThrows(BizException.class,
+                () -> transactionService.startProcessing(transactionId));
+
+        assertEquals(ErrorCode.INVALID_TRANSACTION_STATUS_TRANSITION.getErrorMsg(), exception.getMessage());
+        verify(transactionRepository, never()).save(any(Transaction.class));
     }
 
 }

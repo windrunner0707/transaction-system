@@ -1,6 +1,7 @@
 package com.qiqibai.transactionsystem.presentation;
 
 import com.qiqibai.transactionsystem.application.TransactionApplicationService;
+import com.qiqibai.transactionsystem.presentation.request.TransactionActionRequest;
 import com.qiqibai.transactionsystem.presentation.request.TransactionCreateRequest;
 import com.qiqibai.transactionsystem.presentation.request.TransactionUpdateRequest;
 import com.qiqibai.transactionsystem.presentation.response.TransactionQueryResponse;
@@ -38,6 +39,26 @@ public class TransactionController {
     @PatchMapping("/{id}")
     public void modifyTransaction(@PathVariable String id, @RequestBody @Valid TransactionUpdateRequest request) {
         transactionApplicationService.modifyTransaction(id, request);
+    }
+
+    @PostMapping("/{id}/processing")
+    public void startProcessing(@PathVariable String id) {
+        transactionApplicationService.startProcessing(id);
+    }
+
+    @PostMapping("/{id}/success")
+    public void markSucceeded(@PathVariable String id) {
+        transactionApplicationService.markSucceeded(id);
+    }
+
+    @PostMapping("/{id}/failure")
+    public void markFailed(@PathVariable String id, @RequestBody @Valid TransactionActionRequest request) {
+        transactionApplicationService.markFailed(id, request);
+    }
+
+    @PostMapping("/{id}/cancel")
+    public void cancel(@PathVariable String id, @RequestBody @Valid TransactionActionRequest request) {
+        transactionApplicationService.cancel(id, request);
     }
 
     @GetMapping("/{id}")
