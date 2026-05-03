@@ -11,7 +11,6 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -108,7 +107,7 @@ class InMemoryTransactionRepositoryTest {
 
         Transaction reloaded = repository.findById(transaction.getId()).orElseThrow();
         assertEquals(1, transactions.size());
-        assertFalse(transactions.getFirst() == transaction);
+        assertNotSame(transaction, transactions.getFirst());
         assertEquals(transaction.getId(), transactions.getFirst().getId());
         assertEquals(transaction.getDescription(), reloaded.getDescription());
     }
