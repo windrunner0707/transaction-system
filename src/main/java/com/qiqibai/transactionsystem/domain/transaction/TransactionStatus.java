@@ -19,8 +19,12 @@ public enum TransactionStatus {
         ALLOWED_TRANSITIONS.put(PENDING, EnumSet.of(PROCESSING, CANCELED));
         ALLOWED_TRANSITIONS.put(PROCESSING, EnumSet.of(SUCCEEDED, FAILED, CANCELED));
         ALLOWED_TRANSITIONS.put(SUCCEEDED, EnumSet.noneOf(TransactionStatus.class));
-        ALLOWED_TRANSITIONS.put(FAILED, EnumSet.noneOf(TransactionStatus.class));
+        ALLOWED_TRANSITIONS.put(FAILED, EnumSet.of(PENDING));
         ALLOWED_TRANSITIONS.put(CANCELED, EnumSet.noneOf(TransactionStatus.class));
+    }
+
+    public boolean isTerminal() {
+        return this == SUCCEEDED || this == FAILED || this == CANCELED;
     }
 
     public boolean canTransitTo(TransactionStatus targetStatus) {

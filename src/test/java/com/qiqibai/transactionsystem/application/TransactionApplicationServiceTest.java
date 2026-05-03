@@ -1,10 +1,12 @@
 package com.qiqibai.transactionsystem.application;
 
 import com.qiqibai.transactionsystem.application.command.CreateTransactionCommand;
+import com.qiqibai.transactionsystem.application.command.SucceedTransactionCommand;
 import com.qiqibai.transactionsystem.application.command.TransactionActionCommand;
 import com.qiqibai.transactionsystem.application.command.UpdateTransactionCommand;
 import com.qiqibai.transactionsystem.domain.transaction.Transaction;
 import com.qiqibai.transactionsystem.domain.transaction.TransactionStatus;
+import com.qiqibai.transactionsystem.domain.transaction.TransactionType;
 import com.qiqibai.transactionsystem.domain.transaction.TransactionRepository;
 import com.qiqibai.transactionsystem.exception.BizException;
 import com.qiqibai.transactionsystem.exception.ErrorCode;
@@ -31,20 +33,23 @@ class TransactionApplicationServiceTest {
     private TransactionApplicationService transactionService;
     private TransactionRepository transactionRepository;
     private TransactionCache transactionCache;
+    private TransactionEventLog transactionEventLog;
 
 
     @BeforeEach
     void setUp() {
         transactionRepository = Mockito.mock(TransactionRepository.class);
         transactionCache = mock(TransactionCache.class);
-        transactionService = new TransactionApplicationService(transactionRepository, transactionCache);
+        transactionEventLog = mock(TransactionEventLog.class);
+        transactionService = new TransactionApplicationService(transactionRepository, transactionCache, transactionEventLog);
     }
 
     @Test
     void testCreateTransaction() {
         // Arrange
         CreateTransactionCommand command = new CreateTransactionCommand(
-                BigDecimal.valueOf(100.0), "Test transaction", "Test sourceId");
+                BigDecimal.valueOf(100.0), "USD", "Test transaction", "Test sourceId",
+                TransactionType.PAYMENT, "payer-1", "payee-1");
 
         when(transactionRepository.findBySourceId("Test sourceId")).thenReturn(Optional.empty());
         when(transactionRepository.save(any())).thenReturn("id1");
@@ -59,13 +64,29 @@ class TransactionApplicationServiceTest {
         verify(transactionRepository).findBySourceId("Test sourceId");
         assertEquals(TransactionStatus.PENDING, transactionArgumentCaptor.getValue().getStatus());
         assertEquals("Test sourceId", transactionArgumentCaptor.getValue().getSourceId());
+        assertEquals("USD", transactionArgumentCaptor.getValue().getCurrency());
+        assertEquals(TransactionType.PAYMENT, transactionArgumentCaptor.getValue().getType());
+    }
+
+    @Test
+    void testCreateTransaction_amountExceedsLimit() {
+        CreateTransactionCommand command = new CreateTransactionCommand(
+                Transaction.MAX_AMOUNT.add(BigDecimal.ONE), "USD", "Too big", "src-1",
+                TransactionType.PAYMENT, null, null);
+
+        BizException exception = assertThrows(BizException.class,
+                () -> transactionService.createTransaction(command));
+
+        assertEquals(ErrorCode.AMOUNT_EXCEEDS_LIMIT.getErrorMsg(), exception.getMessage());
+        verify(transactionRepository, never()).save(any(Transaction.class));
     }
 
     @Test
     void testCreateTransaction_duplicatedTransaction() {
         // Arrange
         CreateTransactionCommand command = new CreateTransactionCommand(
-                BigDecimal.valueOf(100.0), "Test transaction", "Test sourceId");
+                BigDecimal.valueOf(100.0), "USD", "Test transaction", "Test sourceId",
+                TransactionType.PAYMENT, null, null);
 
         Transaction transaction = Transaction.builder()
                 .sourceId("Test sourceId")
@@ -83,18 +104,42 @@ class TransactionApplicationServiceTest {
     }
 
     @Test
-    void testDeleteTransaction() {
+    void testDeleteTransaction_softDeletes() {
         // Arrange
         String transactionId = UUID.randomUUID().toString();
+        Transaction transaction = Transaction.builder()
+                .id(transactionId)
+                .status(TransactionStatus.SUCCEEDED)
+                .build();
 
-        doNothing().when(transactionRepository).delete(transactionId);
+        when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
+        when(transactionRepository.save(any(Transaction.class))).thenReturn(transactionId);
 
         // Act
         transactionService.deleteTransaction(transactionId);
 
         // Assert
-        verify(transactionRepository, times(1)).delete(transactionId);
+        ArgumentCaptor<Transaction> captor = ArgumentCaptor.forClass(Transaction.class);
+        verify(transactionRepository).save(captor.capture());
+        assertTrue(captor.getValue().isDeleted());
         verify(transactionCache, times(1)).invalidate(transactionId);
+    }
+
+    @Test
+    void testDeleteTransaction_rejectsNonTerminal() {
+        String transactionId = UUID.randomUUID().toString();
+        Transaction transaction = Transaction.builder()
+                .id(transactionId)
+                .status(TransactionStatus.PENDING)
+                .build();
+
+        when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
+
+        BizException exception = assertThrows(BizException.class,
+                () -> transactionService.deleteTransaction(transactionId));
+
+        assertEquals(ErrorCode.INVALID_TRANSACTION_STATUS_TRANSITION.getErrorMsg(), exception.getMessage());
+        verify(transactionRepository, never()).save(any(Transaction.class));
     }
 
     @Test
@@ -216,7 +261,7 @@ class TransactionApplicationServiceTest {
         when(transactionRepository.findAll(pageable)).thenReturn(new PageImpl<>(pageItems, pageable, 5));
 
         // Act
-        Page<TransactionQueryResponse> result = transactionService.getAllTransactionsByPage(pageable);
+        Page<TransactionQueryResponse> result = transactionService.getAllTransactionsByPage(pageable, null);
 
         // Assert
         assertEquals(2, result.getContent().size());
@@ -226,13 +271,28 @@ class TransactionApplicationServiceTest {
     }
 
     @Test
+    void testGetAllTransactionsByPage_withStatusFilter() {
+        Pageable pageable = PageRequest.of(0, 3);
+        List<Transaction> pageItems = List.of(
+                Transaction.builder().id("tx-1").status(TransactionStatus.PENDING).build()
+        );
+        when(transactionRepository.findAll(pageable, TransactionStatus.PENDING))
+                .thenReturn(new PageImpl<>(pageItems, pageable, 1));
+
+        Page<TransactionQueryResponse> result = transactionService.getAllTransactionsByPage(pageable, TransactionStatus.PENDING);
+
+        assertEquals(1, result.getContent().size());
+        verify(transactionRepository, times(1)).findAll(pageable, TransactionStatus.PENDING);
+    }
+
+    @Test
     void testGetAllTransactionsByPage_empty() {
         // Arrange
         Pageable pageable = PageRequest.of(5, 3);
         when(transactionRepository.findAll(pageable)).thenReturn(new PageImpl<>(List.of(), pageable, 10));
 
         // Act
-        Page<TransactionQueryResponse> result = transactionService.getAllTransactionsByPage(pageable);
+        Page<TransactionQueryResponse> result = transactionService.getAllTransactionsByPage(pageable, null);
 
         // Assert
         assertEquals(0, result.getContent().size());
@@ -269,10 +329,28 @@ class TransactionApplicationServiceTest {
         when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
         when(transactionRepository.save(any(Transaction.class))).thenReturn(transactionId);
 
-        transactionService.markSucceeded(transactionId);
+        transactionService.markSucceeded(transactionId, new SucceedTransactionCommand("GW-001"));
 
         assertEquals(TransactionStatus.SUCCEEDED, transaction.getStatus());
+        assertEquals("GW-001", transaction.getReferenceId());
         assertNull(transaction.getStatusReason());
+    }
+
+    @Test
+    void testMarkSucceeded_withoutReferenceId() {
+        String transactionId = UUID.randomUUID().toString();
+        Transaction transaction = Transaction.builder()
+                .id(transactionId)
+                .status(TransactionStatus.PROCESSING)
+                .build();
+
+        when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
+        when(transactionRepository.save(any(Transaction.class))).thenReturn(transactionId);
+
+        transactionService.markSucceeded(transactionId, new SucceedTransactionCommand(null));
+
+        assertEquals(TransactionStatus.SUCCEEDED, transaction.getStatus());
+        assertNull(transaction.getReferenceId());
     }
 
     @Test
@@ -311,6 +389,24 @@ class TransactionApplicationServiceTest {
     }
 
     @Test
+    void testRetryTransaction() {
+        String transactionId = UUID.randomUUID().toString();
+        Transaction transaction = Transaction.builder()
+                .id(transactionId)
+                .status(TransactionStatus.FAILED)
+                .build();
+
+        when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
+        when(transactionRepository.save(any(Transaction.class))).thenReturn(transactionId);
+
+        transactionService.retryTransaction(transactionId);
+
+        assertEquals(TransactionStatus.PENDING, transaction.getStatus());
+        verify(transactionRepository).save(transaction);
+        verify(transactionCache).invalidate(transactionId);
+    }
+
+    @Test
     void testInvalidTransition() {
         String transactionId = UUID.randomUUID().toString();
         Transaction transaction = Transaction.builder()
@@ -328,3 +424,4 @@ class TransactionApplicationServiceTest {
     }
 
 }
+
