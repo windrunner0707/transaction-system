@@ -20,4 +20,6 @@ public interface TransactionRepository {
 
     Page<Transaction> findAll(Pageable pageable);
 
+    Page<Transaction> findAll(Pageable pageable, TransactionStatus status);
+
 }

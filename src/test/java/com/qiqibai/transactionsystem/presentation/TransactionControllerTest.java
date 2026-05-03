@@ -3,16 +3,20 @@ package com.qiqibai.transactionsystem.presentation;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qiqibai.transactionsystem.application.TransactionApplicationService;
 import com.qiqibai.transactionsystem.application.command.CreateTransactionCommand;
+import com.qiqibai.transactionsystem.application.command.SucceedTransactionCommand;
 import com.qiqibai.transactionsystem.application.command.TransactionActionCommand;
 import com.qiqibai.transactionsystem.application.command.UpdateTransactionCommand;
+import com.qiqibai.transactionsystem.domain.transaction.Transaction;
+import com.qiqibai.transactionsystem.domain.transaction.TransactionEvent;
 import com.qiqibai.transactionsystem.domain.transaction.TransactionStatus;
 import com.qiqibai.transactionsystem.exception.BizException;
 import com.qiqibai.transactionsystem.exception.ErrorCode;
 import com.qiqibai.transactionsystem.exception.GlobalExceptionHandler;
 import com.qiqibai.transactionsystem.presentation.request.TransactionActionRequest;
 import com.qiqibai.transactionsystem.presentation.request.TransactionCreateRequest;
+import com.qiqibai.transactionsystem.presentation.request.TransactionSuccessRequest;
 import com.qiqibai.transactionsystem.presentation.request.TransactionUpdateRequest;
-import com.qiqibai.transactionsystem.presentation.response.TransactionQueryResponse;
+import com.qiqibai.transactionsystem.domain.transaction.TransactionType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.PageImpl;
@@ -63,8 +67,10 @@ class TransactionControllerTest {
                         .content("""
                                 {
                                   "amount": 100.50,
+                                  "currency": "USD",
                                   "description": "new transaction",
-                                  "sourceId": "source-1"
+                                  "sourceId": "source-1",
+                                  "type": "PAYMENT"
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -84,6 +90,51 @@ class TransactionControllerTest {
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.amount").value("amount should not be null"));
+    }
+
+    @Test
+    void shouldRejectMissingCurrency() throws Exception {
+        mockMvc.perform(post("/transactions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "amount": 10,
+                                  "sourceId": "src-1",
+                                  "type": "PAYMENT"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.currency").value("currency should not be blank"));
+    }
+
+    @Test
+    void shouldRejectMissingSourceId() throws Exception {
+        mockMvc.perform(post("/transactions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "amount": 10,
+                                  "currency": "USD",
+                                  "type": "PAYMENT"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.sourceId").value("sourceId should not be blank"));
+    }
+
+    @Test
+    void shouldRejectMissingType() throws Exception {
+        mockMvc.perform(post("/transactions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "amount": 10,
+                                  "currency": "USD",
+                                  "sourceId": "src-1"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.type").value("type should not be null"));
     }
 
     @Test
@@ -132,7 +183,17 @@ class TransactionControllerTest {
         mockMvc.perform(post("/transactions/tx-1/success"))
                 .andExpect(status().isOk());
 
-        verify(transactionApplicationService).markSucceeded("tx-1");
+        verify(transactionApplicationService).markSucceeded(eq("tx-1"), any(SucceedTransactionCommand.class));
+    }
+
+    @Test
+    void shouldMarkTransactionSucceededWithReferenceId() throws Exception {
+        mockMvc.perform(post("/transactions/tx-1/success")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new TransactionSuccessRequest("GW-999"))))
+                .andExpect(status().isOk());
+
+        verify(transactionApplicationService).markSucceeded(eq("tx-1"), any(SucceedTransactionCommand.class));
     }
 
     @Test
@@ -156,6 +217,14 @@ class TransactionControllerTest {
     }
 
     @Test
+    void shouldRetryTransaction() throws Exception {
+        mockMvc.perform(post("/transactions/tx-1/retry"))
+                .andExpect(status().isOk());
+
+        verify(transactionApplicationService).retryTransaction("tx-1");
+    }
+
+    @Test
     void shouldRejectBlankActionReason() throws Exception {
         mockMvc.perform(post("/transactions/tx-1/failure")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -170,34 +239,40 @@ class TransactionControllerTest {
 
     @Test
     void shouldReturnTransactionById() throws Exception {
-        when(transactionApplicationService.getTransactionById("tx-1")).thenReturn(TransactionQueryResponse.builder()
-                .id("tx-1")
-                .amount(BigDecimal.valueOf(99))
-                .description("stored")
-                .sourceId("src-1")
-                .status(TransactionStatus.PROCESSING)
-                .statusReason("review")
-                .version(2L)
-                .createdAt(LocalDateTime.of(2024, 1, 1, 10, 0))
-                .updatedAt(LocalDateTime.of(2024, 1, 1, 10, 5))
-                .build());
+        when(transactionApplicationService.getTransactionById("tx-1")).thenReturn(
+                Transaction.builder()
+                        .id("tx-1")
+                        .amount(BigDecimal.valueOf(99))
+                        .currency("USD")
+                        .description("stored")
+                        .sourceId("src-1")
+                        .type(TransactionType.PAYMENT)
+                        .status(TransactionStatus.PROCESSING)
+                        .statusReason("review")
+                        .attemptCount(1)
+                        .createdAt(LocalDateTime.of(2024, 1, 1, 10, 0))
+                        .updatedAt(LocalDateTime.of(2024, 1, 1, 10, 5))
+                        .build());
 
         mockMvc.perform(get("/transactions/tx-1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value("tx-1"))
                 .andExpect(jsonPath("$.amount").value(99))
+                .andExpect(jsonPath("$.currency").value("USD"))
                 .andExpect(jsonPath("$.sourceId").value("src-1"))
+                .andExpect(jsonPath("$.type").value("PAYMENT"))
                 .andExpect(jsonPath("$.status").value("PROCESSING"))
                 .andExpect(jsonPath("$.statusReason").value("review"))
-                .andExpect(jsonPath("$.version").value(2));
+                .andExpect(jsonPath("$.attemptCount").value(1))
+                .andExpect(jsonPath("$.version").doesNotExist());
     }
 
     @Test
     void shouldReturnPagedTransactions() throws Exception {
-        when(transactionApplicationService.getAllTransactionsByPage(any())).thenReturn(new PageImpl<>(
+        when(transactionApplicationService.getAllTransactionsByPage(any(), any())).thenReturn(new PageImpl<>(
                 List.of(
-                        TransactionQueryResponse.builder().id("tx-1").amount(BigDecimal.ONE).status(TransactionStatus.PENDING).build(),
-                        TransactionQueryResponse.builder().id("tx-2").amount(BigDecimal.TEN).status(TransactionStatus.SUCCEEDED).build()
+                        Transaction.builder().id("tx-1").amount(BigDecimal.ONE).status(TransactionStatus.PENDING).build(),
+                        Transaction.builder().id("tx-2").amount(BigDecimal.TEN).status(TransactionStatus.SUCCEEDED).build()
                 ),
                 PageRequest.of(1, 2),
                 5
@@ -214,6 +289,35 @@ class TransactionControllerTest {
     }
 
     @Test
+    void shouldFilterTransactionsByStatus() throws Exception {
+        when(transactionApplicationService.getAllTransactionsByPage(any(), eq(TransactionStatus.PENDING)))
+                .thenReturn(new PageImpl<>(
+                        List.of(Transaction.builder().id("tx-3").status(TransactionStatus.PENDING).build()),
+                        PageRequest.of(0, 10),
+                        1
+                ));
+
+        mockMvc.perform(get("/transactions?status=PENDING"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].status").value("PENDING"));
+    }
+
+    @Test
+    void shouldReturnTransactionHistory() throws Exception {
+        when(transactionApplicationService.getTransactionHistory("tx-1")).thenReturn(List.of(
+                new TransactionEvent("evt-1", "tx-1", "CREATED",
+                        null, TransactionStatus.PENDING, null, null,
+                        LocalDateTime.of(2024, 1, 1, 10, 0))
+        ));
+
+        mockMvc.perform(get("/transactions/tx-1/history"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].eventType").value("CREATED"))
+                .andExpect(jsonPath("$[0].transactionId").value("tx-1"));
+    }
+
+    @Test
     void shouldTranslateBizExceptionToBadRequest() throws Exception {
         when(transactionApplicationService.getTransactionById("missing"))
                 .thenThrow(new BizException(ErrorCode.NO_TRANSACTION_FOUND));
@@ -224,3 +328,4 @@ class TransactionControllerTest {
                 .andExpect(jsonPath("$.code").value("Error-001"));
     }
 }
+

@@ -5,6 +5,9 @@ import com.qiqibai.transactionsystem.domain.transaction.TransactionStatus;
 import com.qiqibai.transactionsystem.exception.BizException;
 import com.qiqibai.transactionsystem.exception.ErrorCode;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -117,4 +120,72 @@ class InMemoryTransactionRepositoryTest {
         assertEquals(transaction.getId(), retrievedTransactions.getFirst().getId());
         assertEquals(transaction.getDescription(), reloaded.getDescription());
     }
+
+    @Test
+    void shouldHideSoftDeletedTransactionsFromFindById() {
+        Transaction transaction = Transaction.builder().build();
+        repository.save(transaction);
+
+        // Soft-delete via archive (requires terminal state, so cancel first)
+        Transaction copy = repository.findById(transaction.getId()).orElseThrow();
+        copy.cancel("test");
+        repository.save(copy);
+        Transaction afterCancel = repository.findById(transaction.getId()).orElseThrow();
+        afterCancel.archive();
+        repository.save(afterCancel);
+
+        assertTrue(repository.findById(transaction.getId()).isEmpty());
+    }
+
+    @Test
+    void shouldExcludeSoftDeletedTransactionsFromFindAll() {
+        Transaction active = Transaction.builder().build();
+        Transaction toDelete = Transaction.builder().build();
+        repository.save(active);
+        repository.save(toDelete);
+
+        // Soft-delete toDelete
+        Transaction copy = repository.findById(toDelete.getId()).orElseThrow();
+        copy.cancel("cleanup");
+        repository.save(copy);
+        Transaction afterCancel = repository.findById(toDelete.getId()).orElseThrow();
+        afterCancel.archive();
+        repository.save(afterCancel);
+
+        List<Transaction> all = repository.findAll();
+        assertEquals(1, all.size());
+        assertEquals(active.getId(), all.getFirst().getId());
+    }
+
+    @Test
+    void shouldFilterByStatus() {
+        Transaction pending = Transaction.builder().build();
+        Transaction processing = Transaction.builder().build();
+        repository.save(pending);
+        repository.save(processing);
+
+        Transaction processingCopy = repository.findById(processing.getId()).orElseThrow();
+        processingCopy.startProcessing();
+        repository.save(processingCopy);
+
+        Page<Transaction> result = repository.findAll(PageRequest.of(0, 10), TransactionStatus.PENDING);
+
+        assertEquals(1, result.getTotalElements());
+        assertEquals(pending.getId(), result.getContent().getFirst().getId());
+    }
+
+    @Test
+    void shouldReturnTransactionsInDeterministicOrderByCreatedAt() {
+        // Save several transactions; order should be consistent (createdAt ascending)
+        for (int i = 0; i < 5; i++) {
+            repository.save(Transaction.builder().description("tx-" + i).build());
+        }
+
+        Page<Transaction> page1 = repository.findAll(PageRequest.of(0, 5, Sort.by("createdAt")));
+        Page<Transaction> page2 = repository.findAll(PageRequest.of(0, 5, Sort.by("createdAt")));
+
+        assertEquals(page1.getContent().stream().map(Transaction::getId).toList(),
+                page2.getContent().stream().map(Transaction::getId).toList());
+    }
 }
+
