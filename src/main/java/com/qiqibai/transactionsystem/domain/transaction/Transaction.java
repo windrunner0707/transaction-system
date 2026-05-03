@@ -65,21 +65,21 @@ public class Transaction {
     }
 
     public void startProcessing() {
-        transitTo(TransactionStatus.PROCESSING, null, null);
+        transitTo(TransactionStatus.PROCESSING, null);
         this.attemptCount++;
     }
 
     public void markSucceeded(String referenceId) {
-        transitTo(TransactionStatus.SUCCEEDED, null, referenceId);
+        transitTo(TransactionStatus.SUCCEEDED, null);
         this.referenceId = referenceId;
     }
 
     public void markFailed(String reason) {
-        transitTo(TransactionStatus.FAILED, reason, null);
+        transitTo(TransactionStatus.FAILED, reason);
     }
 
     public void cancel(String reason) {
-        transitTo(TransactionStatus.CANCELED, reason, null);
+        transitTo(TransactionStatus.CANCELED, reason);
     }
 
     public void retry() {
@@ -89,7 +89,7 @@ public class Transaction {
         if (this.attemptCount >= MAX_RETRIES) {
             throw new BizException(ErrorCode.MAX_RETRIES_EXCEEDED);
         }
-        transitTo(TransactionStatus.PENDING, null, null);
+        transitTo(TransactionStatus.PENDING, null);
     }
 
     public void archive() {
@@ -110,7 +110,7 @@ public class Transaction {
         }
     }
 
-    private void transitTo(TransactionStatus targetStatus, String reason, String refId) {
+    private void transitTo(TransactionStatus targetStatus, String reason) {
         if (!status.canTransitTo(targetStatus)) {
             throw new BizException(ErrorCode.INVALID_TRANSACTION_STATUS_TRANSITION);
         }
