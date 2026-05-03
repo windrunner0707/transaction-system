@@ -51,7 +51,7 @@ class TransactionControllerTest {
     }
 
     @Test
-    void shouldReturnStaticLiQiangMessage() throws Exception {
+    void shouldReturnHealthCheckMessage() throws Exception {
         mockMvc.perform(get("/transactions/li-qiang"))
                 .andExpect(status().isOk())
                 .andExpect(content().string("Object extends Liqiang"));
